@@ -1,6 +1,5 @@
 import javax.swing.JFrame
 import javax.swing.JPanel
-import javax.swing.Timer
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Graphics
@@ -10,7 +9,8 @@ import java.awt.RenderingHints
 import java.awt.event.ActionEvent
 import java.awt.event.ActionListener
 import java.awt.geom.Point2D
-import  javax.swing.Timer
+import javax.swing.Timer
+import java.util.function.Function
 
 /**
  * Created by dakue_000 on 20.05.2015.
@@ -18,8 +18,66 @@ import  javax.swing.Timer
 
 
 class Func {
-    Func(closure) {
+    static final double ITERATION = 0.01
+    private double MAX, startPoint, endPoint
+
+    private int currentAccuracy = 0
+    private List<Point2D.Double[]> pointsList = []
+    private List<Double> maxList = []
+
+    def getXN() { return startPoint }
+    def getXK() { return endPoint }
+    def getMAX() { return maxList[maxList.size()-1] }
+    def getPoints(k) { return pointsList[k-1] }
+    def accuracy() { return currentAccuracy }
+
+    Func(closure, startPoint, endPoint) {
         this.closure = closure
+        this.startPoint = startPoint
+        this.endPoint = endPoint
+
+
+        initPoints(1)
+    }
+
+    def initPoints(k) {
+        assert(k>0)
+
+        if (pointsList.size() == k)
+            return
+
+        if ( (k-pointsList.size()) > 1)
+            initPoints(k-1)
+
+        final int count = (endPoint - startPoint) / ITERATION
+        def points = new Point2D.Double[count]
+        def prevPoints = (k > 1) ? pointsList[k-2] : null
+        def start = startPoint
+
+        MAX = closure(start, k)
+
+        for (int i = 0; i < count; ++i) {
+            double prevFuncValue = prevPoints ?  prevPoints[i].y : 0
+            points[i] = new Point2D.Double(start, closure(start, k) + prevFuncValue)
+            if (points[i].y > MAX)
+                MAX = points[i].y
+            start += ITERATION
+        }
+
+        pointsList[k-1] = points
+        maxList[k-1] = MAX
+        if (currentAccuracy < k)
+            currentAccuracy = k
+    }
+
+    /**
+     *
+     * @param f ( Point(double, double) )
+     */
+    def forEach(f, k = pointsList.size()) {
+        for (point in getPoints(k)) {
+            f(point)
+        }
     }
 
     def closure
@@ -29,55 +87,38 @@ class App extends JFrame {
     private Func func
 
     private JPanel panel = new JPanel(new BorderLayout())
+    private JPanel upPanel = new JPanel()
     private Canvas canvas
 
     private Timer timer = new Timer(100, new ActionListener() {
         private int k = 1
         @Override
         void actionPerformed(ActionEvent e) {
-            canvas.animate(k++)
+            func.initPoints(k++)
+            canvas.repaint()
 
             timer.setDelay( (int)timer.getDelay() * 0.9 )
             if (k > 500)
                 timer.stop()
 
-            k = ((double)k)*1.1
-            println 'DELAY: ' + timer.getDelay() + '; k: ' + k
+//            k = ((double)k)*1.1
+//            println 'DELAY: ' + timer.getDelay() + '; k: ' + k
         }
     })
 
     class Canvas extends JPanel {
         private static final ITERATION = 0.01
-        private double X0, Y0, MX, MY, XK, XN, MAX
-        private Point2D.Double[] points
-
-        def animate(k) {
-            initPoints(-Math.PI*(1+0.2), Math.PI*(1+0.2), {x ->
-                double r = 0
-                for (int i = 1; i <= k; ++i)
-                    r += func.closure(x, i)
-                return r
-            })
-            repaint()
-        }
-
-        Canvas() {
-
-        }
+        private double X0, Y0, MX, MY
 
         @Override
         protected void paintComponent(Graphics g) {
             super.paintComponent(g)
             Graphics2D g2d = (Graphics2D)g
             setupRender(g2d)
-
             computConsts()
-            Polygon p = createPolygon()
 
             paintLines(g2d)
-
-            g.setColor(Color.BLUE)
-            g2d.drawPolyline(p.xpoints, p.ypoints, p.npoints)
+            drawFuncPolygon(g2d)
         }
 
         private def setupRender(g2d) {
@@ -129,36 +170,32 @@ class App extends JFrame {
             }
         }
 
-        private def createPolygon() {
-            Polygon p = new Polygon()
+        private def drawFuncPolygon(g) {
+            def color = new Color(0,0,255, 255)
+            int acc = func.accuracy()
 
-            for (point in points) {
-                int x = point.x * MX + X0
-                int y = Y0 - point.y * MY
-                p.addPoint(x, y)
-            }
+            for (int i = 1; i <= 10; ++i) {
+                int k = (int)0.1*i*acc
+                if (!k)
+                    continue
 
-            return p
-        }
+                Polygon p = new Polygon()
 
-        private def initPoints(startPoint, endPoint, func) {
-            final int count = (endPoint - startPoint) / ITERATION
-            points = new Point2D.Double[count]
+                g.setColor(new Color(0,0,255, (int)0.1*i*255))
 
-            XN = startPoint; XK = endPoint; MAX = func(startPoint)
+                func.forEach({ point ->
+                    int x = point.x * MX + X0
+                    int y = Y0 - point.y * MY
+                    p.addPoint(x, y)
+                }, k)
 
-            for (int i = 0; i < count; ++i) {
-                points[i] = new Point2D.Double(startPoint, func(startPoint))
-                if (points[i].y > MAX)
-                    MAX = points[i].y
-
-                startPoint += ITERATION
+                g.drawPolyline(p.xpoints, p.ypoints, p.npoints)
             }
         }
 
         private def computConsts() {
             X0 = getWidth()/2; Y0 = getHeight()/2
-            MX = X0/XK*0.9; MY = Y0/MAX*0.9
+            MX = X0 / func.getXK() * 0.9; MY = Y0 / func.getMAX() * 0.9
         }
     }
 
@@ -169,8 +206,7 @@ class App extends JFrame {
         this.canvas = new Canvas()
         this.timer.start()
 
-//        timer.setDelay(timer.getDelay()*0.9)
-
+        panel.add(upPanel, BorderLayout.NORTH)
         panel.add(canvas, BorderLayout.CENTER)
         setContentPane(panel)
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE)
@@ -180,6 +216,6 @@ class App extends JFrame {
 }
 func = new Func({x, k ->
     return (Math.pow(-1, k+1)*2/k)*Math.sin(k*x)
-})
+}, -Math.PI*1.2, Math.PI*1.2)
 
 app = new App(func)

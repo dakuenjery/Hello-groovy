@@ -26,6 +26,7 @@ import java.util.regex.Pattern
 class Parser {
     private vars = new String[2]
     private func = null
+    private func2 = null
 
     private rpn = new RPN()
     private class RPN {
@@ -72,11 +73,10 @@ class Parser {
 
         try {
             for (boolean needNextIteration = true; needNextIteration && str.size(); ) {
-                def matcher = str =~ pattern; matcher.find()
+                def matcher = str =~ pattern
 
-                if (matcher.groupCount() == 2) {
+                if (matcher.find() && matcher.groupCount() == 2) {
                     str = matcher.group(2)
-//                    strs << matcher.group(2) + matcher.group(3)
                     strs << matcher.group(1)
                 }
 //                else {
@@ -330,7 +330,7 @@ class App extends JFrame {
     }
 }
 
-parser = new Parser('y = -3*x - 5/x + 7/x + 9*x*2 - 11 + 13*x + 15 + 17 - 19/x')
+parser = new Parser('y = -3*x - x/x + 7/x + 9*x*x*2 - 11 + 13*x + 15 + 17 - 19/x')
 parser2 = new Parser('y = -x*32')
 
 
